@@ -18,6 +18,7 @@ import pyqtgraph.opengl as gl
 #Now using this postgresql-opaque-57490 #heroku cloud postgresql roboreactoruser https://roboreactoruser.herokuapp.com/ | https://git.heroku.com/roboreactoruser.git
 #postgresql-rigid-15553  #heroku cloud postgresql robouserdb https://robouserdb.herokuapp.com/ | https://git.heroku.com/robouserdb.git
 #postgresql-amorphous-76096 as DATABASE_URL https://robotuserinterface.herokuapp.com/
+#Database url can be get from this command heroku config:get DATABASE_URL -a app name
 DATABASE_URL = "postgres://xvbxxuaqpujgue:5c062c3b3fe5ed0568ac106245866ba273ff816b3eaaed847a0a9bfb71742318@ec2-44-198-236-169.compute-1.amazonaws.com:5432/d381tss8v44rv3"
 Host = "ec2-44-198-236-169.compute-1.amazonaws.com"
 Database = "d381tss8v44rv3",
@@ -64,7 +65,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.label_2.setStyleSheet("color:white")
         self.label_3.setStyleSheet("color:white")
         query()
-        #submit
+        submit()
     def Login(self):
             print("Logging into the database......")
             usernamedata = self.text.toPlainText()
@@ -81,10 +82,6 @@ def query():
       #conn = psycopg2.connect(DATABASE_URL, sslmode='require') 
       conn = psycopg2.connect(
                DATABASE_URL,
-               #host = Host,
-               #database = Database,
-               #password = Password,
-               #port = Port,
                sslmode='require',
       )
       c = conn.cursor()
@@ -99,22 +96,19 @@ def query():
       Recharge Text);
       ''')
       conn.commit()
-      c.close()
+      conn.close()
       
 # This submit will be on the server side to register the customer from the website only
 def submit():
       #DATABASE_URL = os.environ['DATABASE_URL']
       #conn = psycopg2.connect(DATABASE_URL, sslmode='require') 
+      print("Submitting database")
       conn = psycopg2.connect(
-        
-               host = Host,
-               database = Database,
-               password = Password,
-               port = Port,
+               DATABASE_URL,
                sslmode='require',
       )
       c = conn.cursor()
-      c.execute('''CREATE TABLE IF NOT EXIST customers
+      c.execute('''CREATE TABLE IF NOT EXISTS customers
       (first_name Text,
       last_name Text,
       e_mail Text,
@@ -133,7 +127,7 @@ def submit():
       C5 = "Pending"  
       C6 = "ChanapaiChuadchum" 
       C7 = "10/12/2021" 
-      C8 = recharge.get()
+      C8 = 'Non'
       c.execute('''INSERT INTO customers (first_name,last_name,e_mail,password,payment_status,cardholder,schedule,recharge)
       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',(C1,C2,C3,C4,C5,C6,C7,C8)
       )
@@ -145,14 +139,11 @@ def update():
       #DATABASE_URL = os.environ['DATABASE_URL']
       #conn = psycopg2.connect(DATABASE_URL, sslmode='require') 
       conn = psycopg2.connect(
-               host = Host,
-               database = Database,
-               password = Password,
-               port = Port,
+               DATABASE_URL,
                sslmode='require',
       )
       c = conn.cursor()
-      c.execute('''CREATE TABLE IF NOT EXIST customers
+      c.execute('''CREATE TABLE IF NOT EXISTS customers
       (first_name Text,
       last_name Text,
       e_mail Text,
@@ -167,8 +158,9 @@ def update():
       c.execute("SELECT*FROM customers")
       records = c.fetchall() 
       output = '' 
-      for records in records:
-             print(records[records]) #Getting the records data 
+      print(records)
+      #for records in records:
+      #       print(records[records]) #Getting the records data 
       conn.close()        
 def main():
     app = QtWidgets.QApplication(sys.argv)
