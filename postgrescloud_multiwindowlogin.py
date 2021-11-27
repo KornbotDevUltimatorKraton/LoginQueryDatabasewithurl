@@ -715,7 +715,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pushButton.clicked.connect(self.Login) #button login 
         self.text = self.findChild(QTextEdit,"textEdit") #Getting the text edit input the username on the system
         self.text2 = self.findChild(QLineEdit,"lineEdit") #Getting the password input
-        self.label.setStyleSheet("color:white")
+        self.text2.setEchoMode(QLineEdit.Password) #QLine edit for hiding the password 
+        self.label.setStyleSheet("color:white") 
         self.label_2.setStyleSheet("color:white")
         self.label_3.setStyleSheet("color:white")
         query()   #Query data database 
@@ -724,6 +725,7 @@ class MainWindow(QtWidgets.QMainWindow):
             print("Logging into the database......")
             usernamedata = self.text.toPlainText()
             passworddata = self.text2.text() # This is the QLineEdit for the text hiding password data 
+            #self.text2.setEchoMode(QLineEdit.Password)
             print(usernamedata,passworddata) #Getting the username and password
             #reading the cloud database and activate the new window 
             #DATABASE_URL = os.environ['DATABASE_URL']
