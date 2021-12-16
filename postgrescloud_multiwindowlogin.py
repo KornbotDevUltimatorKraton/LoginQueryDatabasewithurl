@@ -11,12 +11,24 @@ import psycopg2 # Login for the client side on the app machine
 import pandas as pd 
 import subprocess # Getting the subprocess 
 import multiprocessing
+import cv2, imutils, socket # Getting the opencv to connect with the web socket base to report the camera output to display on the gui firmware uploader 
+import numpy as np
+import time
+import base64
+from PyQt5.QtCore import Qt, QSize, QTimer, QThread
 from PyQt5 import QtCore, QtWidgets, uic,Qt,QtGui 
-from PyQt5.QtWidgets import QApplication,QTreeView,QDirModel,QFileSystemModel,QVBoxLayout, QTreeWidget,QStyledItemDelegate, QTreeWidgetItem,QLabel,QGridLayout,QLineEdit,QDial,QComboBox,QTextEdit,QTabWidget,QLineEdit
+from PyQt5.QtWidgets import QApplication,QTreeView,QDirModel,QFileSystemModel,QVBoxLayout, QTreeWidget,QStyledItemDelegate, QTreeWidgetItem,QLabel,QGridLayout,QLineEdit,QDial,QComboBox,QTextEdit,QTabWidget,QLineEdit,QPushButton
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
+from PyQt5.QtCore import *
 from PyQt5.QtGui import QPixmap,QIcon,QImage,QPalette,QBrush
 from pyqtgraph.Qt import QtCore, QtGui   #PyQt graph to control the model grphic loaded  
-import pyqtgraph.opengl as gl
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#Pyqt5 opengl 
+import pyqtgraph as pg 
+from pyqtgraph.flowchart import Flowchart
+import pyqtgraph.metaarray as metaarray
+
 from paramiko import SSHClient, AutoAddPolicy # SSH remote command to activate the host machine control
 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -293,17 +305,18 @@ osmem = []
 os.system("echo Hello"+"\t"+str(username)) #Getting the host name 
 parent_dir = "/home/"+username+"/"
 directory = ["Wifi_devices_connects","Robotics_nodes_json"]
+mode = 0o777
 # running the loop of make directory 
 for dric in range(0,len(directory)):
    try:
       print("Now creating.....",str(directory[dric])) #Getting the directory created for the wifi config and robotics nodes json  
       path = os.path.join(parent_dir, directory[dric]) 
-      os.mkdir(path) #Make the path file for the wifi device connection data for choosing on the firmware devices generator
+      os.mkdir(path,mode) #Make the path file for the wifi device connection data for choosing on the firmware devices generator
    except:
        print(directory[dric]+" directory  was created")
 nodelist = os.listdir(os.path.join(parent_dir,directory[1]))  #getting the list of the robotics node json 
 nodelist.append(" ")
-storage_path = "/media/"+username  
+storage_path = "/media/"+username   
 generic_storage = os.listdir(storage_path) #Getting the list of the storate path 
 generic_mem = []
 generic_mem.append(" ")
@@ -325,13 +338,20 @@ robothostname = []
     #Getting the wifi of the host 
 wifi_mem = []
 wifi_password = []
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#UDP socket client 
 
+#fps,st,frames_to_count,cnt = (0,0,20,0) 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #Targetting command including firmware installation start and stop services and generate the config of the start at boot function 
 command_exec = ["roboreactorfirmware.sh","./roboreactorfirmware.sh","sudo service supervisorctl start","sudo service supervisor stop","sudo supervisorctl reread","sudo service supervisor restart"]   #Command to activate the service automaticly and accessing the data inside the singleboard computer via ssh  
 r = requests.get('https://raw.githubusercontent.com/KornbotDevUltimatorKraton/Firmwareoflaptop/main/FirmwareNongpuserver.sh')
 firmware = requests.get('https://raw.githubusercontent.com/KornbotDevUltimatorKraton/Firmwareoflaptop/main/FirmwareNongpuserver.sh')
-
+try:
+  Create_file_storage = os.mkdir(storage_path+"/"+"Roboreactor",mode) #Current storage data # Creating the file inside the directory  
+  Current_wifi_path = os.mkdir(storage_path+"/"+"Roboreactor"+"/"+"Wifi_scan",mode) #
+except:
+    print("File created inside the directory")
 client_username = []
 class MainWindow2(QtWidgets.QMainWindow):
     def __init__(self):
@@ -351,6 +371,13 @@ class MainWindow2(QtWidgets.QMainWindow):
         palette = QPalette()
         palette.setBrush(QPalette.Window, QBrush(oImage))
         self.setPalette(palette)
+        
+        #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        #Label pixmap camera 
+        self.camera = self.findChild(QLabel,"label_5") # Getting this label to display the pixmap data 
+        self.camera.setFixedSize(591,571) # Setting the size of the display image 
+        #self.camera.setFixedSize(340,350) 
+        #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         self.pushButton.clicked.connect(self.Writeimage)
         self.pushButton_2.clicked.connect(self.Remoteconfig) #Autore mote config 
         self.pushButton_3.clicked.connect(self.Start_remote_robot) #Start remote robot  
@@ -358,7 +385,26 @@ class MainWindow2(QtWidgets.QMainWindow):
         self.pushButton_5.clicked.connect(self.Scan_host_machine) #Scan robot host
         self.pushButton_6.clicked.connect(self.Scan_wifi) #Scan wifi 
         self.pushButton_7.clicked.connect(self.Logout) #Logout function to setting the new login 
-
+        self.pushButton_8.clicked.connect(self.Visual1) # Getting the camera 1 connect to open visual data on udp 
+        self.pushButton_9.clicked.connect(self.Restart_services)
+        #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # Adding layout for the nodes display to configure the robot code 
+        #Nodes view will display the data of the nodes from the json file input from the json downloaded from the website roboreactor online with the account data connected via the api 
+        #1 Making the node flow chart plot from the flowchart 
+        self.gridLayout = self.findChild(QGridLayout,"gridLayout")
+        #self.gridLayout.addWidget(QPushButton('1'),0,0)
+    
+        fc = Flowchart(terminals={
+            'dataIn': {'io': 'in'},
+            'dataOut': {'io': 'out'}    
+        })
+        w = fc.widget() 
+        self.gridLayout.addWidget(fc.widget(), 0, 0, 2, 1)
+        pw1 = pg.PlotWidget()
+        pw2 = pg.PlotWidget()
+        self.gridLayout.addWidget(pw1, 0, 1)
+        self.gridLayout.addWidget(pw2, 1, 1)
+        
         #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #self.labelcam = self.findChild(QLabel,'label_5')
               #Set of commbobox selection function 
@@ -371,8 +417,10 @@ class MainWindow2(QtWidgets.QMainWindow):
 
               #Text combonent 
         self.text6= self.findChild(QTextEdit,"textEdit_6")  #using the text edit 1 input the ssh text input  
-        self.text3 = self.findChild(QTextEdit,"textEdit_3")  #using the text edit 3 input the password of the host target 
-        self.text4 = self.findChild(QTextEdit,"textEdit_4")  #using the text edit 4 input the wifi password 
+        self.text3 = self.findChild(QLineEdit,"lineEdit_2")  #using the text edit 3 input the password of the host target 
+        self.text3.setEchoMode(QLineEdit.Password) # Setting the qline edit for password mode 
+        self.text4 = self.findChild(QLineEdit,"lineEdit")  #using the text edit 4 input the wifi password 
+        self.text4.setEchoMode(QLineEdit.Password) # Setting the qline edit for password mode 
         self.text5 = self.findChild(QTextEdit,"textEdit_5")  #using the text edit 5 input the robot host hame 
              #Tab widget 
         self.tabwidget = self.findChild(QTabWidget,'tabWidget')  #using the TabWidget for the tab change the function
@@ -464,6 +512,17 @@ class MainWindow2(QtWidgets.QMainWindow):
                      self.combo7.addItems([" "]) #Getting the blank list on the top to be able to choosing the data in the combobox later 
                      self.combo7.addItems(wifi_mem) #getting the list of wifi memory
                      print(wifi_mem)
+    
+    def Visual1(self): 
+           # Camerafunction for the UDP receiver communication       
+           #UDP socket client
+           print("Connecting the ip camera") 
+           self.Worker1 = Worker1() 
+           self.Worker1.start()
+           self.Worker1.ImageUpdate.connect(self.ImageUpdateSlot)
+    def ImageUpdateSlot(self, Image):
+            self.pixmap = QPixmap.fromImage(Image)
+            self.camera.setPixmap(self.pixmap) 
     def wifissid(self,wifi_index):
              print(wifi_mem[wifi_index])
              if len(network_name) < len(wifi_mem):
@@ -510,7 +569,7 @@ class MainWindow2(QtWidgets.QMainWindow):
        if len(robothostname) >1:
                     robothostname.remove(robothostname[0])
        if len(host_password) <=0:
-                 host_password.append(self.text3.toPlainText()) #Host password for the ssh remote 
+                 host_password.append(self.text3.text()) #Host password for the ssh remote 
        if len(host_password) >1:
                  host_password.remove(host_password[0])
        try:     
@@ -579,10 +638,12 @@ class MainWindow2(QtWidgets.QMainWindow):
                              self.progress.setValue((wifi/(len(wifi_mem)-1))*100) # Testing the progressbar using the scanning process of the wifi 
     def Start_remote_robot(self): 
            #Start the service robot to operating at boot 
-           print("Start service robot to operating at boot services")
+           print("Start service robot to operating at boot services") # Start running the robot software 
+    def Restart_services(self): 
+           print("Restart service robot operating at boot services") # Restart the robot software 
     def Stop_remote_robot(self):
            #Stop the service robot to operating at boot 
-           print("Stop service robot to operating at boot services")
+           print("Stop service robot to operating at boot services") # Stop running the robot software 
     def Scan_host_machine(self):
            #Scan the hostmachine 
            print("Start scanning the host machine") #
@@ -847,8 +908,50 @@ def map_network(pool_size=255):
         ip_list.append(ip)
 
     return ip_list
-
-
+class Worker1(QThread):
+    ImageUpdate = pyqtSignal(QImage)
+    def run(self):
+        
+        #UDP socket client 
+        BUFF_SIZE = 65536
+        client_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        client_socket.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,BUFF_SIZE)
+        host_name = socket.gethostname()
+        message = b'Hello'
+        port = 9800
+        client_socket.sendto(message,(hostip_mem[0],port))
+        fps,st,frames_to_count,cnt = (0,0,20,0) 
+        self.ThreadActive = True
+        while self.ThreadActive:
+        
+            packet,_ = client_socket.recvfrom(BUFF_SIZE)
+            data = base64.b64decode(packet,' /')
+            npdata = np.fromstring(data,dtype=np.uint8)
+            Image = cv2.imdecode(npdata,1)
+            Image = cv2.cvtColor(Image, cv2.COLOR_BGR2RGB)
+            Image = cv2.putText(Image,'FPS: '+str(fps),(10,40),cv2.FONT_HERSHEY_SIMPLEX,0.7,(0,0,255),1)
+            FlippedImage = cv2.flip(Image, 1)
+            ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
+            Pic = ConvertToQtFormat.scaled(591, 571, Qt.KeepAspectRatio) 
+            self.ImageUpdate.emit(Pic)
+            #cv2.imshow("Receiving video",Image)
+            key = cv2.waitKey(1) & 0xFF 
+            if key == ord('q'):
+                client_socket.close() 
+                break 
+            
+            if cnt == frames_to_count:
+                     try:
+                         fps = round(frames_to_count/time.time()-st) 
+                         st=time.time() 
+                         cnt=0
+                     except:
+                         pass 
+            cnt+=1              
+                
+    def stop(self):
+        self.ThreadActive = False
+        self.quit()
 def query():
       #Getting the host url https://dashboard.heroku.com/apps 
       #DATABASE_URL = os.environ['DATABASE_URL']
@@ -876,10 +979,13 @@ def query():
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
+     
     main = MainWindow()
     main.show()
-    sys.exit(app.exec_())
-
     
-if __name__ == '__main__':         
-    main()
+    sys.exit(app.exec_())
+    
+    
+if __name__ == '__main__':
+     main()
+     
