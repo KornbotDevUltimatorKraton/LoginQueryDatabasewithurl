@@ -28,6 +28,7 @@ from pyqtgraph.Qt import QtCore, QtGui   #PyQt graph to control the model grphic
 import pyqtgraph as pg 
 from pyqtgraph.flowchart import Flowchart
 import pyqtgraph.metaarray as metaarray
+import pyqtgraph.opengl as gl
 
 from paramiko import SSHClient, AutoAddPolicy # SSH remote command to activate the host machine control
 
@@ -339,9 +340,9 @@ robothostname = []
 wifi_mem = []
 wifi_password = []
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-#UDP socket client 
-
-#fps,st,frames_to_count,cnt = (0,0,20,0) 
+#UDP socket message receiver sensor connection between the robot systems 
+Sensors_data = [] # getting the data from the sensor node numpy array 
+global sensor_data_info, datasize
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #Targetting command including firmware installation start and stop services and generate the config of the start at boot function 
 command_exec = ["roboreactorfirmware.sh","./roboreactorfirmware.sh","sudo service supervisorctl start","sudo service supervisor stop","sudo supervisorctl reread","sudo service supervisor restart"]   #Command to activate the service automaticly and accessing the data inside the singleboard computer via ssh  
@@ -353,6 +354,9 @@ try:
 except:
     print("File created inside the directory")
 client_username = []
+host = 'local host'
+port = 5000 # Getting the port  for the udp connection
+  
 class MainWindow2(QtWidgets.QMainWindow):
     def __init__(self):
         super(MainWindow2, self).__init__()
@@ -386,25 +390,13 @@ class MainWindow2(QtWidgets.QMainWindow):
         self.pushButton_6.clicked.connect(self.Scan_wifi) #Scan wifi 
         self.pushButton_7.clicked.connect(self.Logout) #Logout function to setting the new login 
         self.pushButton_8.clicked.connect(self.Visual1) # Getting the camera 1 connect to open visual data on udp 
-        self.pushButton_9.clicked.connect(self.Restart_services)
+        self.pushButton_9.clicked.connect(self.Restart_services) 
+        self.pushButton_10.clicked.connect(self.Analyze_sensors) #Analyse the recorded sensor from the testing data on the hardware 
         #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Adding layout for the nodes display to configure the robot code 
         #Nodes view will display the data of the nodes from the json file input from the json downloaded from the website roboreactor online with the account data connected via the api 
         #1 Making the node flow chart plot from the flowchart 
-        self.gridLayout = self.findChild(QGridLayout,"gridLayout")
-        #self.gridLayout.addWidget(QPushButton('1'),0,0)
-    
-        fc = Flowchart(terminals={
-            'dataIn': {'io': 'in'},
-            'dataOut': {'io': 'out'}    
-        })
-        w = fc.widget() 
-        self.gridLayout.addWidget(fc.widget(), 0, 0, 2, 1)
-        pw1 = pg.PlotWidget()
-        pw2 = pg.PlotWidget()
-        self.gridLayout.addWidget(pw1, 0, 1)
-        self.gridLayout.addWidget(pw2, 1, 1)
-        
+        self.gridLayout = self.findChild(QGridLayout,"gridLayout") # Setting the grid layout for flowchart control 
         #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #self.labelcam = self.findChild(QLabel,'label_5')
               #Set of commbobox selection function 
@@ -604,6 +596,69 @@ class MainWindow2(QtWidgets.QMainWindow):
                      
        except: 
             print("You haven't upload firmware and config to the SD card")
+    def Analyze_sensors(self): 
+      try:
+        print("Start analyze sensor data")
+        fc = Flowchart(terminals={
+            'dataIn': {'io': 'in'},
+            'dataOut': {'io': 'out'}    
+        })
+        w = fc.widget() 
+        self.gridLayout.addWidget(fc.widget(), 0, 0, 2, 1)
+        pw1 = pg.PlotWidget()
+        pw2 = pg.PlotWidget()
+        self.gridLayout.addWidget(pw1, 0, 1)
+        self.gridLayout.addWidget(pw2, 1, 1)
+        # Inthe real function using the data recoded in array to using with the function of the system 
+        #Request api data from the existing host machine selected from the gui to get the sesor hardware detected and value information 
+        
+        #datasize = 100
+        #data = np.random.normal(size=datasize) # Getting the data input from the sensor api list input and magnage pattern like pyqtgraphflowchart example 
+        #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        #UDP socket programming function to get the message from the sensor
+        #s = socket.socket(socket.AF_INET,socket.SOCK_STREAM) # udp socket 
+        #s.connect((hostip_mem[0],port)) # Connect to certain machine ip and the port 
+        #msg = s.recv(1024) # Receive byte of data 
+
+        #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        
+               
+
+        data = requests.get("http://"+hostip_mem[0]+':5000') # Getting the data requests from the http api 
+        print(data.text) 
+        print(type(data.text))
+        jsondata = json.loads(data.text)
+        print(jsondata,len(jsondata.get('sensorinfo')))
+        #print(jsondata.get('components').get('sensorinfo').get('sensordata')) # Getting the sensor info nefore getting the sensor value 
+        sensor_data_info = np.array(jsondata.get('sensorinfo'))
+        datasize = len(jsondata.get('sensorinfo'))
+        if datasize == len(sensor_data_info):
+                print("Datasize matched!")
+        sensor_data_info[200:300] += 1
+        #data += np.sin(np.linspace(0, 100, 100))
+        print(sensor_data_info)
+        
+        data = metaarray.MetaArray(sensor_data_info, info=[{'name': 'Time', 'values': np.linspace(0, 0.1, len(sensor_data_info))}, {}])
+        ## Feed data into the input terminal of the flowchart
+        fc.setInput(dataIn=sensor_data_info)
+        plotList = {'Top Plot': pw1, 'Bottom Plot': pw2}
+        pw1Node = fc.createNode('PlotWidget', pos=(0, -150))
+        pw1Node.setPlotList(plotList)
+        pw1Node.setPlot(pw1)
+        pw2Node = fc.createNode('PlotWidget', pos=(150, -150))
+        pw2Node.setPlot(pw2)
+        pw2Node.setPlotList(plotList)
+        fNode = fc.createNode('GaussianFilter', pos=(0, 0))
+        fNode.ctrls['sigma'].setValue(5) # Spin box value increment control gaussian parameters
+        fc.connectTerminals(fc['dataIn'], fNode['In'])
+        fc.connectTerminals(fc['dataIn'], pw1Node['In'])
+        fc.connectTerminals(fNode['Out'], pw2Node['In'])
+        fc.connectTerminals(fNode['Out'], fc['dataOut'])
+        #s.close() # Close the socket connection function 
+      except: 
+          print("host machine ip "+hostip_mem[0]+':5000')
+          print("Host mechine may not config firmware to report sensors data") # Getting the udp connection between the sensor data     
+    
     def Scan_wifi(self): #Button input function for the wifi scanning 
            #Input the 1 loop wifi scanner here to operating at search mode 
            print('Mapping wifi") #Start mapping wifi')  
@@ -638,7 +693,29 @@ class MainWindow2(QtWidgets.QMainWindow):
                              self.progress.setValue((wifi/(len(wifi_mem)-1))*100) # Testing the progressbar using the scanning process of the wifi 
     def Start_remote_robot(self): 
            #Start the service robot to operating at boot 
-           print("Start service robot to operating at boot services") # Start running the robot software 
+        print("Start service robot to operating at boot services") # Start running the robot software 
+        axis = gl.GLAxisItem()
+        g = gl.GLGridItem()
+        g.scale(10, 10, 0.5) # Change the scale of the grid 
+        self.openGLWidget.addItem(g)  # Adding the grid size 
+        self.openGLWidget.addItem(axis) # Adding the axis 
+        data = np.fromfunction(psi, (100,100,200))
+        positive = np.log(np.clip(data, 0, data.max())**2)
+        negative = np.log(np.clip(-data, 0, -data.min())**2)
+        d2 = np.empty(data.shape + (4,), dtype=np.ubyte)
+        d2[..., 0] = positive * (255./positive.max())
+        d2[..., 1] = negative * (255./negative.max())
+        d2[..., 2] = d2[...,1]
+        d2[..., 3] = d2[..., 0]*0.3 + d2[..., 1]*0.3
+        d2[..., 3] = (d2[..., 3].astype(float) / 255.) **2 * 255
+        d2[:, 0, 0] = [255,0,0,100]
+        d2[0, :, 0] = [0,255,0,100]
+        d2[0, 0, :] = [0,0,255,100]
+        v = gl.GLVolumeItem(d2)
+        v.translate(-50,-50,-100)
+        self.openGLWidget.addItem(v)
+        ax = gl.GLAxisItem()
+        self.openGLWidget.addItem(ax)
     def Restart_services(self): 
            print("Restart service robot operating at boot services") # Restart the robot software 
     def Stop_remote_robot(self):
@@ -833,7 +910,18 @@ class MainWindow(QtWidgets.QMainWindow):
                                break
                    
             conn.close()
-
+def psi(i, j, k, offset=(50,50,100)):
+    x = i-offset[0]
+    y = j-offset[1]
+    z = k-offset[2]
+    th = np.arctan2(z, (x**2+y**2)**0.5)
+    phi = np.arctan2(y, x)
+    r = (x**2 + y**2 + z **2)**0.5
+    a0 = 2
+    #ps = (1./81.) * (2./np.pi)**0.5 * (1./a0)**(3/2) * (6 - r/a0) * (r/a0) * np.exp(-r/(3*a0)) * np.cos(th)
+    ps = (1./81.) * 1./(6.*np.pi)**0.5 * (1./a0)**(3/2) * (r/a0)**2 * np.exp(-r/(3*a0)) * (3 * np.cos(th)**2 - 1)
+    return ps
+           
 #Scan host devices name in the local network 
 def pinger(job_q, results_q):
     """
